@@ -1,0 +1,211 @@
+﻿@{
+    ViewData["Title"] = "Gemini Chatbot";
+    Layout = null;
+}
+
+<style>
+    /* Modern CSS Tasarımı */
+    :root {
+        --primary-color: #2563eb;
+        --bg-color: #f3f4f6;
+        --chat-bg: #ffffff;
+        --bot-msg-bg: #f1f5f9;
+        --user-msg-bg: #2563eb;
+        --text-color: #1f2937;
+    }
+
+    body {
+        background-color: var(--bg-color);
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .chat-container {
+        max-width: 800px;
+        margin: 40px auto;
+        background: var(--chat-bg);
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        display: flex;
+        flex-direction: column;
+        height: 75vh;
+        overflow: hidden;
+    }
+
+    .chat-header {
+        background: var(--primary-color);
+        color: white;
+        padding: 20px;
+        text-align: center;
+        font-weight: 600;
+        font-size: 1.2rem;
+    }
+
+    .chat-box {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .message {
+        max-width: 75%;
+        padding: 12px 18px;
+        border-radius: 18px;
+        line-height: 1.5;
+        font-size: 0.95rem;
+        word-wrap: break-word;
+    }
+
+    .bot-message {
+        align-self: flex-start;
+        background-color: var(--bot-msg-bg);
+        color: var(--text-color);
+        border-bottom-left-radius: 4px;
+    }
+
+    .user-message {
+        align-self: flex-end;
+        background-color: var(--user-msg-bg);
+        color: white;
+        border-bottom-right-radius: 4px;
+    }
+
+    .chat-input-area {
+        padding: 20px;
+        background: white;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        gap: 10px;
+    }
+
+    .chat-input {
+        flex: 1;
+        padding: 15px;
+        border: 1px solid #d1d5db;
+        border-radius: 25px;
+        outline: none;
+        font-size: 1rem;
+        transition: border-color 0.3s;
+    }
+
+        .chat-input:focus {
+            border-color: var(--primary-color);
+        }
+
+    .send-btn {
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        padding: 0 25px;
+        border-radius: 25px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background 0.3s;
+    }
+
+        .send-btn:hover {
+            background: #1d4ed8;
+        }
+
+    /* Yükleniyor animasyonu */
+    .typing-indicator {
+        display: none;
+        align-self: flex-start;
+        background-color: var(--bot-msg-bg);
+        padding: 12px 18px;
+        border-radius: 18px;
+        font-style: italic;
+        color: #6b7280;
+        font-size: 0.9rem;
+    }
+</style>
+
+<div class="chat-container">
+    <div class="chat-header">
+        🤖 Gemini Hastane Randevu Asistanı
+    </div>
+
+    <div class="chat-box" id="chatBox">
+        <div class="message bot-message">
+            Merhaba! Ben Gemini tabanlı bir hastane randevu asistanınıyım. Rahatsızlığınız nedir?
+        </div>
+        <div class="typing-indicator" id="typingIndicator">Gemini yazıyor...</div>
+    </div>
+
+    <div class="chat-input-area">
+        <input type="text" id="messageInput" class="chat-input" placeholder="Bir mesaj yazın..." autocomplete="off" />
+        <button id="sendBtn" class="send-btn" onclick="sendMessage()">Gönder</button>
+    </div>
+</div>
+
+<script>
+    const messageInput = document.getElementById('messageInput');
+    const chatBox = document.getElementById('chatBox');
+    const typingIndicator = document.getElementById('typingIndicator');
+
+    // Enter tuşuna basıldığında mesajı gönder
+    messageInput.addEventListener("keypress", function(event) {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            sendMessage();
+        }
+    });
+
+    async function sendMessage() {
+        const messageText = messageInput.value.trim();
+        if (!messageText) return;
+
+        // Kullanıcı mesajını ekrana ekle
+        appendMessage(messageText, 'user');
+        messageInput.value = '';
+
+        // "Yazıyor..." ibaresini göster ve scroll'u aşağı indir
+        typingIndicator.style.display = 'block';
+        scrollToBottom();
+
+        try {
+            // Backend'e AJAX (Fetch) isteği at
+            const response = await fetch('@Url.Action("SendMessage", "Chat")', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message: messageText })
+            });
+
+            const data = await response.json();
+
+            // "Yazıyor..." ibaresini gizle
+            typingIndicator.style.display = 'none';
+
+            if (data.success) {
+                // Bot yanıtını ekrana ekle
+                appendMessage(data.reply, 'bot');
+            } else {
+                appendMessage('Hata: ' + data.message, 'bot');
+            }
+        } catch (error) {
+            typingIndicator.style.display = 'none';
+            appendMessage('Bağlantı hatası oluştu. Lütfen tekrar deneyin.', 'bot');
+        }
+    }
+
+    function appendMessage(text, sender) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message');
+        messageDiv.classList.add(sender === 'user' ? 'user-message' : 'bot-message');
+
+        // Güvenlik için düz metin olarak ekliyoruz (XSS koruması)
+        messageDiv.innerText = text;
+
+        // "Yazıyor" animasyonundan hemen öncesine ekle
+        chatBox.insertBefore(messageDiv, typingIndicator);
+        scrollToBottom();
+    }
+
+    function scrollToBottom() {
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+</script>
