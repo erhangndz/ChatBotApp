@@ -1,6 +1,7 @@
 ﻿
 using ChatBotApp.Options;
 using Microsoft.Extensions.Options;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 
@@ -11,7 +12,7 @@ namespace ChatBotApp.Services
 
         private readonly HttpClient _client;
         private readonly GeminiOptions _geminiOptions;
-        
+
 
         public GeminiService(HttpClient client, IOptions<GeminiOptions> geminiOptions)
         {
@@ -21,7 +22,7 @@ namespace ChatBotApp.Services
 
         public async Task<string> GetChatResponseAsync(string userMessage)
         {
-           
+
             var apiKey = _geminiOptions.ApiKey;
             var apiUrl = _geminiOptions.ApiUrl;
 
@@ -44,7 +45,7 @@ namespace ChatBotApp.Services
 
             var jsonContent = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
 
-            var response = await _client.PostAsync(apiUrl+apiKey, jsonContent);
+            var response = await _client.PostAsync(apiUrl + apiKey, jsonContent);
 
             response.EnsureSuccessStatusCode();
 
@@ -63,5 +64,89 @@ namespace ChatBotApp.Services
 
 
         }
+
+        public async IAsyncEnumerable<string> GetChatResponseStreamAsync(string userMessage, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            var apiKey = _geminiOptions.ApiKey;
+            var apiUrl = _geminiOptions.StreamApiUrl;
+
+            var requestUrl = apiUrl + apiKey;
+
+            var requestBody = new
+            {
+                contents = new[]
+                {
+                    new
+                    {
+                        parts = new[]
+                        {
+                            new
+                            {
+                                text= userMessage
+                            }
+                        }
+                    }
+                }
+            };
+
+            var jsonContent = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl) { Content = jsonContent };
+
+            using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            response.EnsureSuccessStatusCode();
+
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var reader = new StreamReader(stream);
+
+            while (!reader.EndOfStream)
+            {
+                var line = await reader.ReadLineAsync();
+
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+
+                if (line.StartsWith("data: "))
+                {
+                    var jsonData = line.Substring("data: ".Length);
+
+                    string? textChunk = null;
+                    bool isValid = false;
+
+                    try
+                    {
+                        var jsonDocument = JsonDocument.Parse(jsonData);
+
+                        textChunk = jsonDocument.RootElement
+                        .GetProperty("candidates")[0]
+                        .GetProperty("content")
+                        .GetProperty("parts")[0]
+                        .GetProperty("text")
+                        .GetString();
+
+                        isValid = !string.IsNullOrEmpty(textChunk);
+                    }
+
+                    catch (Exception)
+                    {
+                        isValid = false;
+                    }
+
+                    if (isValid && textChunk != null)
+                    {
+                        yield return textChunk;
+                    }
+                }
+            }
+
+
+        }
+
+
     }
 }
+

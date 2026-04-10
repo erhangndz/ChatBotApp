@@ -39,6 +39,17 @@ namespace ChatBotApp.Controllers
                 return StatusCode(500, new { success = false, message = "Bir hata oluştu: " + ex.Message });
             }
         }
+
+
+        [HttpPost]
+        public async Task StreamMessage([FromBody] ChatRequest request)
+        {
+            await foreach(var chunk in _geminiService.GetChatResponseStreamAsync(request.Message))
+            {
+                await Response.WriteAsync(chunk);
+                await Response.Body.FlushAsync();
+            }
+        }
     }
 }
 

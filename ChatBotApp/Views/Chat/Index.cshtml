@@ -124,12 +124,12 @@
 
 <div class="chat-container">
     <div class="chat-header">
-        🤖 Gemini Hastane Randevu Asistanı
+        🤖 Gemini Yapay Zeka Asistanı
     </div>
 
     <div class="chat-box" id="chatBox">
         <div class="message bot-message">
-            Merhaba! Ben Gemini tabanlı bir hastane randevu asistanınıyım. Rahatsızlığınız nedir?
+            Merhaba! Ben Gemini tabanlı bir yapay zeka asistanınıyım. Size nasıl yardımcı olabilirim?
         </div>
         <div class="typing-indicator" id="typingIndicator">Gemini yazıyor...</div>
     </div>
@@ -140,7 +140,7 @@
     </div>
 </div>
 
-<script>
+@* <script>
     const messageInput = document.getElementById('messageInput');
     const chatBox = document.getElementById('chatBox');
     const typingIndicator = document.getElementById('typingIndicator');
@@ -203,6 +203,203 @@
         // "Yazıyor" animasyonundan hemen öncesine ekle
         chatBox.insertBefore(messageDiv, typingIndicator);
         scrollToBottom();
+    }
+
+    function scrollToBottom() {
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+</script> *@
+
+@* <script>
+    const messageInput = document.getElementById('messageInput');
+    const chatBox = document.getElementById('chatBox');
+    const typingIndicator = document.getElementById('typingIndicator');
+
+    // Enter tuşuna basıldığında mesajı gönder
+    messageInput.addEventListener("keypress", function(event) {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            sendMessage();
+        }
+    });
+
+    async function sendMessage() {
+        const messageText = messageInput.value.trim();
+        if (!messageText) return;
+
+        // Kullanıcı mesajını ekrana ekle
+        appendMessage(messageText, 'user');
+        messageInput.value = '';
+
+        // "Yazıyor..." ibaresini göster ve scroll'u aşağı indir
+        typingIndicator.style.display = 'block';
+        scrollToBottom();
+
+        try {
+            // Backend'e AJAX (Fetch) isteği at
+            const response = await fetch('@Url.Action("StreamMessage", "Chat")', { // <-- Controller metodunun ismine dikkat et
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message: messageText })
+            });
+
+            // "Yazıyor..." ibaresini gizle çünkü veri akışı başlıyor
+            typingIndicator.style.display = 'none';
+
+            if (!response.ok) {
+                appendMessage('Hata: Sunucuya ulaşılamadı.', 'bot');
+                return;
+            }
+
+            // Bot için boş bir mesaj balonu oluştur (Harfleri bunun içine dolduracağız)
+            const botMessageDiv = createEmptyMessageBubble('bot');
+
+            // Gelen veri akışını (stream) okumak için Reader ve Decoder oluştur
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+
+            // Stream bitene kadar döngüye gir
+            while (true) {
+                const { done, value } = await reader.read();
+
+                // Akış bittiyse döngüden çık
+                if (done) break;
+
+                // Gelen baytları metne çevir ve bot mesaj balonuna ekle
+                const chunk = decoder.decode(value, { stream: true });
+                botMessageDiv.innerText += chunk;
+
+                // Her yeni harf/kelime eklendiğinde scroll'u en alta kaydır
+                scrollToBottom();
+            }
+
+        } catch (error) {
+            typingIndicator.style.display = 'none';
+            appendMessage('Bağlantı hatası oluştu. Lütfen tekrar deneyin.', 'bot');
+        }
+    }
+
+    // Normal mesaj eklemek için (Kullanıcı mesajları veya hata mesajları)
+    function appendMessage(text, sender) {
+        const messageDiv = createEmptyMessageBubble(sender);
+        messageDiv.innerText = text;
+        scrollToBottom();
+    }
+
+    // Boş bir mesaj balonu HTML elementini oluşturan yardımcı fonksiyon
+    function createEmptyMessageBubble(sender) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message');
+        messageDiv.classList.add(sender === 'user' ? 'user-message' : 'bot-message');
+
+        // "Yazıyor" animasyonundan hemen öncesine ekle
+        chatBox.insertBefore(messageDiv, typingIndicator);
+        return messageDiv;
+    }
+
+    function scrollToBottom() {
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+</script> *@
+
+<script>
+    const messageInput = document.getElementById('messageInput');
+    const chatBox = document.getElementById('chatBox');
+    const typingIndicator = document.getElementById('typingIndicator');
+
+    // Yazma hızı ayarı (milisaniye cinsinden - ne kadar düşükse o kadar hızlı)
+    const TYPING_SPEED = 20;
+
+    messageInput.addEventListener("keypress", function(event) {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            sendMessage();
+        }
+    });
+
+    async function sendMessage() {
+        const messageText = messageInput.value.trim();
+        if (!messageText) return;
+
+        appendMessage(messageText, 'user');
+        messageInput.value = '';
+
+        typingIndicator.style.display = 'block';
+        scrollToBottom();
+
+        try {
+            const response = await fetch('@Url.Action("StreamMessage", "Chat")', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: messageText })
+            });
+
+            typingIndicator.style.display = 'none';
+
+            if (!response.ok) {
+                appendMessage('Hata: Sunucuya ulaşılamadı.', 'bot');
+                return;
+            }
+
+            const botMessageDiv = createEmptyMessageBubble('bot');
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+
+            let textQueue = ""; // Gelen verilerin biriktiği kuyruk
+            let isTyping = false; // Yazma işleminin devam edip etmediği kontrolü
+
+            async function typeNextCharacter() {
+                if (textQueue.length > 0) {
+                    isTyping = true;
+                    // DÜZELTME: innerText yerine textContent kullanıyoruz
+                    botMessageDiv.textContent += textQueue.charAt(0);
+                    textQueue = textQueue.substring(1);
+
+                    scrollToBottom();
+
+                    setTimeout(typeNextCharacter, TYPING_SPEED);
+                } else {
+                    isTyping = false;
+                }
+            }
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                textQueue += chunk;
+
+                if (!isTyping) {
+                    typeNextCharacter();
+                }
+            }
+
+        } catch (error) {
+            typingIndicator.style.display = 'none';
+            appendMessage('Bağlantı hatası oluştu.', 'bot');
+        }
+    }
+
+    function appendMessage(text, sender) {
+        const messageDiv = createEmptyMessageBubble(sender);
+        // DÜZELTME: Normal mesajlar için de textContent kullanıyoruz
+        messageDiv.textContent = text;
+        scrollToBottom();
+    }
+
+    function createEmptyMessageBubble(sender) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message');
+        messageDiv.classList.add(sender === 'user' ? 'user-message' : 'bot-message');
+
+        // CSS GÜVENCESİ: Boşlukların ve satır atlamalarının kaybolmamasını sağlar
+        messageDiv.style.whiteSpace = "pre-wrap";
+
+        chatBox.insertBefore(messageDiv, typingIndicator);
+        return messageDiv;
     }
 
     function scrollToBottom() {
